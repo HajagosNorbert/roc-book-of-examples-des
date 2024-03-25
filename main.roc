@@ -24,7 +24,7 @@ main =
         patientsWaiting: initialPatients,
         eventQueue,
         availableDoctors: 1,
-        patientsProcessed: []
+        patientsProcessed: [],
     }
     simRes = executeEvents world
     dbg simRes
@@ -83,12 +83,12 @@ handlePatientInteracts = \world, id ->
         Ok modifiedWorld -> modifiedWorld
 
 handleGeneratesPatient = \world, id ->
-    { time, patientsWaiting, eventQueue, availableDoctors } = world
+    { time, eventQueue } = world
     if time < timeWhenGeneratingStops then
         # random
         generationEvent = { time: time + interArrivalTime, type: GeneratesPatient (id + 1) }
         queueWithGeneration = eventQueue |> PQueue.enqueue generationEvent
-        worldWithGeneration = {world & eventQueue: queueWithGeneration }
+        worldWithGeneration = { world & eventQueue: queueWithGeneration }
 
         # random healthy or not
         patient = { id, arrivalTime: time, state: Healthy }
@@ -97,36 +97,34 @@ handleGeneratesPatient = \world, id ->
         world
 
 patientArrived = \world, patient ->
-    { time, patientsWaiting, eventQueue, availableDoctors } = world
+    { time, patientsWaiting, eventQueue } = world
     when tryProcessingPatient world patient is
         Ok worldWithProcessedPatient -> worldWithProcessedPatient
         Err NoAvailableDoctors ->
-            newPatients = Queue.enqueue patientsWaiting patient |> Result.withDefault patientsWaiting 
+            newPatients = Queue.enqueue patientsWaiting patient |> Result.withDefault patientsWaiting
             # random
             interactionEvent = { time: time + interactionTime, type: PatientInteracts patient.id }
             queueWithInteraction = eventQueue |> PQueue.enqueue interactionEvent
-            {world & eventQueue: queueWithInteraction, patientsWaiting: newPatients }
+            { world & eventQueue: queueWithInteraction, patientsWaiting: newPatients }
 
-
-tryProcessingPatient = \ world, patient ->
-    { time, patientsWaiting, eventQueue, availableDoctors } = world
+tryProcessingPatient = \world, patient ->
+    { availableDoctors } = world
     if availableDoctors > 0 then
         Ok (processPatient world patient)
     else
         Err NoAvailableDoctors
 
 processPatient = \world, patient ->
-    { time, patientsWaiting, eventQueue, availableDoctors } = world
-    patientProcessedEvent = {time: time + docProcessTime, type: PatientProcessed patient}
+    { time, eventQueue, availableDoctors } = world
+    patientProcessedEvent = { time: time + docProcessTime, type: PatientProcessed patient }
     newEventQueue = eventQueue |> PQueue.enqueue patientProcessedEvent
-    {world & eventQueue: newEventQueue, availableDoctors: availableDoctors-1}
-    
+    { world & eventQueue: newEventQueue, availableDoctors: availableDoctors - 1 }
 
 handlePatientProcessed = \world, patient ->
     { patientsWaiting, patientsProcessed, availableDoctors } = world
 
     newPatientsProcessed = List.append patientsProcessed patient
-    worldWithDoneProcessing = {world & availableDoctors: availableDoctors + 1, patientsProcessed: newPatientsProcessed}
+    worldWithDoneProcessing = { world & availableDoctors: availableDoctors + 1, patientsProcessed: newPatientsProcessed }
     when Queue.dequeue patientsWaiting is
-         Ok (newQueue, patientNextInLine) -> processPatient {worldWithDoneProcessing & patientsWaiting: newQueue} patientNextInLine
-         Err QueueWasEmpty -> worldWithDoneProcessing
+        Ok (newQueue, patientNextInLine) -> processPatient { worldWithDoneProcessing & patientsWaiting: newQueue } patientNextInLine
+        Err QueueWasEmpty -> worldWithDoneProcessing
