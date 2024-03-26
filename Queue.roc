@@ -1,5 +1,5 @@
 interface Queue
-    exposes [empty, toList, getAt, setAt, len, enqueue, dequeue]
+    exposes [empty, find, getAt, setAt, len, enqueue, dequeue]
     imports []
 
 empty = \capacity -> {
@@ -10,7 +10,12 @@ empty = \capacity -> {
     capacity,
 }
 
-toList = .data
+find = \q, condition ->
+    List.walkWithIndexUntil q.data (Err NotFound) \state, elem, idx ->
+        if condition elem then
+            Break (Ok (idx, elem))
+        else
+            Continue state
 
 getAt = \q, index ->
     List.get q.data index
