@@ -19,6 +19,10 @@ dequeue = \q ->
 expect dequeue events == Ok ([{ time: 3 }, { time: 5 }], { time: 1 })
 expect enqueue [] { time: 1 } == [{ time: 1 }]
 
+expect
+    queue = empty |> enqueue {time : 2} |> enqueue {time: 1} |> enqueue {time: 3}
+    List.map queue .time == [1, 2, 3]
+
 events = [
     { time: 1 },
     { time: 3 },

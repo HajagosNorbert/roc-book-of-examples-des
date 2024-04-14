@@ -3,52 +3,57 @@ app "des"
         pf: "https://github.com/roc-lang/basic-cli/releases/download/0.8.1/x8URkvfyi9I0QhmVG98roKBUs_AZRkLFwFJVJ3942YA.tar.br",
         random: "./roc-random/package/main.roc",
     }
-    imports [pf.Task, random.Random, PQueue, Queue]
+    imports [pf.Stdout, random.Random, PQueue, Queue]
     provides [main] to pf
 
-seed = 42
-interArrivalTime = 50
+timeAfterGeneratingStops = 100
 examinationTime = 4
-timeWhenGeneratingStops = 100
-initialAvailableDoctors = 1
 contactTime = 5
-initialPatients =
-    res =
-        q1 <- Queue.empty 100 |> Queue.enqueue { id: 0, arrivedAt: 0, state: Sick } |> Result.try
-        q1 |> Queue.enqueue { id: 1, arrivedAt: 0, state: Sick }
-    when res is
-        Ok a -> a
-        Err QueueWasFull -> crash "we know at comp time this isn't happening"
-
-initialEvents = PQueue.empty |> PQueue.enqueue { time: 0, type: GeneratesPatient 2 }
-
-initialWorld = {
-    time: 0,
-    patientsWaiting: initialPatients,
-    events: initialEvents,
-    availableDoctors: initialAvailableDoctors,
-    patientsProcessed: [],
-    random: Random.seed seed,
-}
+interArrivalTime = 2
+defaultWorld = 
+    time = 0
+    seed = 42
+    availableDoctors = 1
+    waitingRoomCapacity = 50
+    {
+        time,
+        random: Random.seed seed,
+        availableDoctors,
+        patientsWaiting: Queue.empty waitingRoomCapacity,
+        events: PQueue.empty |> PQueue.enqueue { time: 0, type: GeneratesPatient 0 },
+        patientsProcessed: [],
+    }
 
 main =
-    simResult = executeEvents initialWorld
-    dbg simResult
-    processResults simResult
+    simulatedWorld = executeEvents defaultWorld
+    processResults simulatedWorld
 
-processResults = \simResult ->
-    dbg simResult.patientsProcessed
-    Task.ok {}
+processResults = \{ patientsProcessed: patients, time } ->
+    healthyCount = List.countIf patients \p -> p.state == Healthy
+    infectedCount = List.countIf patients \p -> p.state == Infected
+    healthyAtArrivalCount = healthyCount + infectedCount
+    infectedRatioRaw = Num.toFrac infectedCount / Num.toFrac healthyAtArrivalCount
+    # workaround for the lack of Frac to Str formatting
+    infectedRatioFormatted = infectedRatioRaw * 10000 |> Num.round |> Num.toFrac |> Num.div 100
+
+    patientCount = List.len patients
+    avgWaitTime =
+        waitTimes = List.map patients \p -> p.processedAt - p.arrivedAt
+        (List.sum waitTimes |> Num.toFrac) / (Num.toFrac patientCount)
+
+    report =
+        """
+        Processed $(Num.toStr patientCount) patients in $(Num.toStr time) minutes.
+        $(Num.toStr healthyAtArrivalCount) arrived healthy, $(Num.toStr infectedCount) were infected while waiting, which is $(Num.toStr infectedRatioFormatted)% of the healthy arrivals """
+    Stdout.line report
 
 executeEvents = \world ->
-    if world.time > timeWhenGeneratingStops then
-        world
-    else
-        when world.events |> PQueue.dequeue is
-            Err QueueWasEmpty -> world
-            Ok (newQueue, e) ->
-                newWorld = handleEvent e { world & time: e.time, events: newQueue }
-                executeEvents newWorld
+    nextEvent = world.events |> PQueue.dequeue
+    when nextEvent is
+        Err QueueWasEmpty -> world
+        Ok (newQueue, e) ->
+            newWorld = handleEvent e { world & time: e.time, events: newQueue }
+            executeEvents newWorld
 
 handleEvent = \{ type: eventType }, world ->
     when eventType is
@@ -60,7 +65,7 @@ handlePatientContacts = \world, id ->
     choice = chooseContact world id
     when choice is
         Err TooFewPatients -> world
-        Err (SourceNotFound r) -> { world & random: r }
+        Err (SourceNotFound newRandom) -> { world & random: newRandom }
         Ok { patientChoices, newRandom } ->
             patientsAfterContact = contactPatients world.patientsWaiting patientChoices
             { world &
@@ -89,32 +94,32 @@ chooseContact = \{ patientsWaiting, random }, sourcePatientId ->
 
 contactPatients = \patients, { sourceIdx, source, targetIdx, target } ->
     when (source.state, target.state) is
-        (Healthy, Sick) -> Queue.setAt patients sourceIdx { source & state: Sick }
-        (Sick, Healthy) -> Queue.setAt patients targetIdx { target & state: Sick }
+        (Healthy, Sick) | (Healthy, Infected) -> Queue.setAt patients sourceIdx { source & state: Infected }
+        (Sick, Healthy) | (Infected, Healthy) -> Queue.setAt patients targetIdx { target & state: Infected }
         _ -> patients
 
 handleGeneratesPatient = \world, id ->
     { time, events, random } = world
-    if time < timeWhenGeneratingStops then
+    if time > timeAfterGeneratingStops then
+        world
+    else
         # could be random
         generationEvent = { time: time + interArrivalTime, type: GeneratesPatient (id + 1) }
         queueWithGeneration = events |> PQueue.enqueue generationEvent
         worldWithGeneration = { world & events: queueWithGeneration }
 
         randomGen = Random.u32 0 1
-        {state: newRandom, value: healthyOrSick} = randomGen random
-        state = 
+        { state: newRandom, value: healthyOrSick } = randomGen random
+        state =
             if healthyOrSick == 0 then
                 Sick
             else
                 Healthy
 
         patient = { id, arrivedAt: time, state }
-        worldWithNewRandom = {worldWithGeneration & random: newRandom}
+        worldWithNewRandom = { worldWithGeneration & random: newRandom }
 
         patientArrived worldWithNewRandom patient
-    else
-        world
 
 patientArrived = \world, patient ->
     { time, patientsWaiting, events } = world
@@ -143,8 +148,10 @@ startProcessingPatient = \world, patient ->
 handlePatientProcessed = \world, patient ->
     { patientsWaiting, patientsProcessed, availableDoctors, time } = world
 
-    newPatientsProcessed = List.append patientsProcessed {patient & processedAt: time }
+    patientDetails = { state: patient.state, arrivedAt: patient.arrivedAt, processedAt: time }
+    newPatientsProcessed = List.append patientsProcessed patientDetails
     worldWithDoneProcessing = { world & availableDoctors: availableDoctors + 1, patientsProcessed: newPatientsProcessed }
     when Queue.dequeue patientsWaiting is
         Ok (newQueue, patientNextInLine) -> startProcessingPatient { worldWithDoneProcessing & patientsWaiting: newQueue } patientNextInLine
         Err QueueWasEmpty -> worldWithDoneProcessing
+

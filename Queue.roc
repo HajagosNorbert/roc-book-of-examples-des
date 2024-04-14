@@ -66,9 +66,6 @@ expect
     dequeued = empty capacity |> enqueue A |> Result.try \q -> q |> dequeue
     dequeued == Ok ({ data: [A], front: 0, back: 0, len: 0, capacity: capacity }, A)
 
-# en, deq, deq
-
-# en, enq
 expect
     capacity = 1
     queue =
