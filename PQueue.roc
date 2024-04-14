@@ -2,7 +2,8 @@ interface PQueue
     exposes [empty, enqueue, dequeue]
     imports []
 
-empty = []
+# important: tell why this is a fn, not a constant
+empty = \ {} -> []
 
 enqueue = \q, element ->
     List.append q element
@@ -20,7 +21,7 @@ expect dequeue events == Ok ([{ time: 3 }, { time: 5 }], { time: 1 })
 expect enqueue [] { time: 1 } == [{ time: 1 }]
 
 expect
-    queue = empty |> enqueue {time : 2} |> enqueue {time: 1} |> enqueue {time: 3}
+    queue = empty {} |> enqueue {time : 2} |> enqueue {time: 1} |> enqueue {time: 3}
     List.map queue .time == [1, 2, 3]
 
 events = [

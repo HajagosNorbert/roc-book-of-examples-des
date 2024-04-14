@@ -20,7 +20,7 @@ defaultWorld =
         random: Random.seed seed,
         availableDoctors,
         patientsWaiting: Queue.empty waitingRoomCapacity,
-        events: PQueue.empty |> PQueue.enqueue { time: 0, type: GeneratesPatient 0 },
+        events: PQueue.empty {} |> PQueue.enqueue { time: 0, type: GeneratesPatient 0 },
         patientsProcessed: [],
     }
 
