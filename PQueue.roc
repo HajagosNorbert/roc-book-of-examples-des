@@ -3,54 +3,79 @@ interface PQueue
     imports []
 
 # important: tell why this is a fn, not a constant
-empty = \ {} -> []
+empty = \{} -> []
 
 enqueue = \q, item ->
     newQueue = List.append q item
-    prioritizeAfterEnqueuing newQueue item
+    prioritizeEnqueuedItem newQueue item
 
-prioritizeAfterEnqueuing =\ initialQueue, enqueuedItem-> 
-    prioritizeItemAt =\ q, item, idx ->
+prioritizeEnqueuedItem = \initialQueue, enqueuedItem ->
+    prioritizeItemAt = \q, item, idx ->
         if idx == 0 then
             q
         else
             parentIdx = ((idx - 1) // 2)
             parentItemRes = List.get q parentIdx
             when parentItemRes is
-                Err OutOfBounds -> crash "Out of bounds. Call this function through"
-                Ok parentItem -> 
+                Err OutOfBounds -> crash "Unexpected out of bounds"
+                Ok parentItem ->
                     if item.time < parentItem.time then
-                        newQueue = swap q {item, idx} {item: parentItem, idx: parentIdx}
+                        newQueue = swap q { item, idx } { item: parentItem, idx: parentIdx }
                         prioritizeItemAt newQueue parentItem parentIdx
                     else
                         q
+
     enqueuedItemIdx = ((List.len initialQueue) - 1)
     prioritizeItemAt initialQueue enqueuedItem enqueuedItemIdx
 
-swap = \q, {item: item1, idx: idx1}, {item: item2, idx: idx2} ->
+swap = \q, { item: item1, idx: idx1 }, { item: item2, idx: idx2 } ->
     q |> List.set idx1 item2 |> List.set idx2 item1
 
 dequeue = \q ->
-    qTime = List.map q .time
-    res =
-        minTime <- List.min qTime |> Result.try
-        minIdx <- List.findFirstIndex q (\event -> event.time == minTime) |> Result.try
-        element <- List.get q minIdx |> Result.map
-        (List.dropAt q minIdx, element)
-    res |> Result.mapErr (\_ -> QueueWasEmpty)
+    queueAndItemRes =
+        firstItem <- List.first q |> Result.try
+        lastItem <- List.last q |> Result.map
+        newQueue =
+            swappedQueue = swap q { item: firstItem, idx: 0 } { item: lastItem, idx: List.len q - 1 }
+            unprioritizedNewQueue = List.dropLast swappedQueue 1
+            restorePriority unprioritizedNewQueue
+        (newQueue, firstItem)
+    queueAndItemRes |> Result.mapErr \_ -> QueueWasEmpty
 
-expect dequeue events == Ok ([{ time: 3 }, { time: 5 }], { time: 1 })
-expect enqueue [] { time: 1 } == [{ time: 1 }]
+restorePriority = \initialQueue ->
+    restorePriorityAt = \q, idx ->
+        when List.get q idx is
+            Err OutOfBounds -> q
+            Ok itemToPrioritize ->
+                rightIdx = (idx + 1) * 2
+                leftIdx = rightIdx - 1
+                rightItemRes = List.get q rightIdx
+                leftItemRes = List.get q leftIdx
+                when (leftItemRes, rightItemRes) is
+                    (Err OutOfBounds, Ok _) ->
+                        crash "Binary heaps (Full binary trees) can't have a righ branch if there isn't a left one"
+
+                    (Ok left, Err OutOfBounds) if left.time < itemToPrioritize.time ->
+                        swap q { item: itemToPrioritize, idx } { item: left, idx: leftIdx }
+
+                    (Ok left, Ok right) if left.time < itemToPrioritize.time || right.time < itemToPrioritize.time ->
+                        if left.time <= right.time then
+                            swap q { item: itemToPrioritize, idx } { item: left, idx: leftIdx }
+                        else
+                            swap q { item: itemToPrioritize, idx } { item: right, idx: rightIdx }
+
+                    _ -> q
+
+    restorePriorityAt initialQueue 0
 
 expect
-    queue = empty {} |> enqueue {time : 2} |> enqueue {time: 1} |> enqueue {time: 3}
-    when dequeue queue is
-        Err _ -> Bool.false
-        Ok (_, item) ->
-            item == {time: 1}
-
-events = [
-    { time: 1 },
-    { time: 3 },
-    { time: 5 },
-]
+    queue = empty {}
+    dequeue queue == Err QueueWasEmpty
+expect
+    queue = empty {} |> enqueue { time: 2 } |> enqueue { time: 1 } |> enqueue { time: 3 }
+    success =
+        (q1, item1) <- dequeue queue |> Result.try
+        (q2, item2) <- dequeue q1 |> Result.try
+        (_, item3) <- dequeue q2 |> Result.map
+        (item1, item2, item3) == ({ time: 1 }, { time: 2 }, { time: 3 })
+    Result.withDefault success Bool.false
