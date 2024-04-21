@@ -1,4 +1,4 @@
-interface PQueue
+interface PrioQueue
     exposes [empty, enqueue, dequeue]
     imports []
 
