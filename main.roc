@@ -21,7 +21,7 @@ defaultWorld =
         random: Random.seed seed,
         availableDoctors,
         patientsWaiting: Queue.empty waitingRoomCapacity,
-        events: PQueue.empty {} |> PQueue.enqueue { time: 0, type: GeneratesPatient firstPatientId },
+        events: PQueue.empty {} |> PQueue.enqueue { time: 0, type: PatientGeneration firstPatientId },
         patientsProcessed: [],
     }
 
@@ -64,9 +64,9 @@ processEvents = \world ->
 
 handleEvent = \ world ,{ type: eventType }->
     when eventType is
-        PatientContacts id -> handlePatientContacts world id
-        GeneratesPatient id -> handleGeneratesPatient world id
-        PatientProcessed patient -> handlePatientProcessed world patient
+        PatientInteraction id -> handlePatientContacts world id
+        PatientGeneration id -> handleGeneratesPatient world id
+        PatientServed patient -> handlePatientProcessed world patient
 
 handlePatientContacts = \world, id ->
     choice = chooseContact world id
@@ -111,7 +111,7 @@ handleGeneratesPatient = \world, id ->
         world
     else
         # could be random
-        generationEvent = { time: time + interArrivalTime, type: GeneratesPatient (id + 1) }
+        generationEvent = { time: time + interArrivalTime, type: PatientGeneration (id + 1) }
         queueWithGeneration = events |> PQueue.enqueue generationEvent
         worldWithGeneration = { world & events: queueWithGeneration }
 
@@ -135,7 +135,7 @@ patientArrived = \world, patient ->
         Err NoAvailableDoctors ->
             newPatients = Queue.enqueue patientsWaiting patient |> Result.withDefault patientsWaiting
             # could be random
-            contactEvent = { time: time + contactTime, type: PatientContacts patient.id }
+            contactEvent = { time: time + contactTime, type: PatientInteraction patient.id }
             queueWithContact = events |> PQueue.enqueue contactEvent
             { world & events: queueWithContact, patientsWaiting: newPatients }
 
@@ -148,7 +148,7 @@ tryProcessingPatient = \world, patient ->
 
 startProcessingPatient = \world, patient ->
     { time, events, availableDoctors } = world
-    patientProcessedEvent = { time: time + examinationTime, type: PatientProcessed patient }
+    patientProcessedEvent = { time: time + examinationTime, type: PatientServed patient }
     newEventQueue = events |> PQueue.enqueue patientProcessedEvent
     { world & events: newEventQueue, availableDoctors: availableDoctors - 1 }
 
