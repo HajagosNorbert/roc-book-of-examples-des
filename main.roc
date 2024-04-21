@@ -11,6 +11,7 @@ examinationTime = 5
 contactTime = 5
 interArrivalTime = 2
 defaultWorld =
+    firstPatientId = 0
     time = 0
     seed = 42
     availableDoctors = 2
@@ -20,12 +21,12 @@ defaultWorld =
         random: Random.seed seed,
         availableDoctors,
         patientsWaiting: Queue.empty waitingRoomCapacity,
-        events: PQueue.empty {} |> PQueue.enqueue { time: 0, type: GeneratesPatient 0 },
+        events: PQueue.empty {} |> PQueue.enqueue { time: 0, type: GeneratesPatient firstPatientId },
         patientsProcessed: [],
     }
 
 main =
-    simulatedWorld = executeEvents defaultWorld
+    simulatedWorld = processEvents defaultWorld
     processResults simulatedWorld
 
 processResults = \{ patientsProcessed: patients, time } ->
@@ -43,24 +44,25 @@ processResults = \{ patientsProcessed: patients, time } ->
         """
         Processed $(Num.toStr patientCount) patients in $(Num.toStr time) minutes.
         $(Num.toStr healthyAtArrivalCount) arrived healthy, $(Num.toStr infectedCount) were infected while waiting, which is $(Num.toStr infectedRatioPercentage)% of the healthy arrivals.
-        Patiens had an average wait time of $(Num.toStr avgWaitTime).
+        Patiens had an average wait time of $(Num.toStr avgWaitTime) minutes.
         """
     Stdout.line report
 
 # workaround for the lack of Frac to Str formatting
+# todo: delete this comment if there are no other solutions
 roundToPrecision = \num, decimalCount ->
     tenToThePrecisionth = Num.powInt 10 decimalCount |> Num.toFrac
     num * tenToThePrecisionth |> Num.round |> Num.toFrac |> Num.div tenToThePrecisionth
 
-executeEvents = \world ->
+processEvents = \world ->
     nextEvent = world.events |> PQueue.dequeue
     when nextEvent is
         Err QueueWasEmpty -> world
         Ok (newQueue, e) ->
-            newWorld = handleEvent e { world & time: e.time, events: newQueue }
-            executeEvents newWorld
+            newWorld = handleEvent { world & time: e.time, events: newQueue } e 
+            processEvents newWorld
 
-handleEvent = \{ type: eventType }, world ->
+handleEvent = \ world ,{ type: eventType }->
     when eventType is
         PatientContacts id -> handlePatientContacts world id
         GeneratesPatient id -> handleGeneratesPatient world id
