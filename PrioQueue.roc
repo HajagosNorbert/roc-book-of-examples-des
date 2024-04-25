@@ -3,72 +3,61 @@ interface PrioQueue
     imports []
 
 # important: tell why this is a fn, not a constant
+# todo: make them opaquae
 empty = \{} -> []
 
 enqueue = \q, item ->
+    enqueuedItemIdx = List.len q
     newQueue = List.append q item
-    prioritizeEnqueuedItem newQueue item
+    heapifyUpAt newQueue item enqueuedItemIdx
 
-prioritizeEnqueuedItem = \initialQueue, enqueuedItem ->
-    prioritizeItemAt = \q, item, idx ->
-        if idx == 0 then
-            q
-        else
-            parentIdx = ((idx - 1) // 2)
-            parentItemRes = List.get q parentIdx
-            when parentItemRes is
-                Err OutOfBounds -> crash "Unexpected out of bounds"
-                Ok parentItem ->
-                    if item.time < parentItem.time then
-                        newQueue = swap q { item, idx } { item: parentItem, idx: parentIdx }
-                        prioritizeItemAt newQueue item parentIdx
-                    else
-                        q
-
-    enqueuedItemIdx = ((List.len initialQueue) - 1)
-    prioritizeItemAt initialQueue enqueuedItem enqueuedItemIdx
-
-swap = \q, { item: item1, idx: idx1 }, { item: item2, idx: idx2 } ->
-    q |> List.set idx1 item2 |> List.set idx2 item1
+heapifyUpAt = \q, item, idx ->
+    if idx == 0 then
+        List.set q idx item
+    else
+        parentIdx = ((idx - 1) // 2)
+        parentItemRes = List.get q parentIdx
+        when parentItemRes is
+            Err OutOfBounds -> crash "Unexpected out of bounds"
+            Ok parentItem ->
+                if item.time < parentItem.time then
+                    newQueue = List.set q idx parentItem
+                    heapifyUpAt newQueue item parentIdx
+                else
+                    List.set q idx item
 
 dequeue = \q ->
     queueAndItemRes =
         firstItem <- List.first q |> Result.try
         lastItem <- List.last q |> Result.map
-        newQueue = q |> List.set 0 lastItem |> List.dropLast 1 |> restorePriority
+        newQueue = q |> List.set 0 lastItem |> List.dropLast 1 |> heapifyDown
         (newQueue, firstItem)
     queueAndItemRes |> Result.mapErr \_ -> QueueWasEmpty
 
-restorePriority = \initialQueue ->
-    restorePriorityAt = \q, idx ->
-        when List.get q idx is
-            Err OutOfBounds -> q
-            Ok itemToPrioritize ->
-                rightIdx = (idx + 1) * 2
-                leftIdx = rightIdx - 1
-                rightItemRes = List.get q rightIdx
-                leftItemRes = List.get q leftIdx
-                when (leftItemRes, rightItemRes) is
-                    (Err OutOfBounds, Ok _) ->
-                        crash "Binary heaps (Full binary trees) can't have a righ branch if there isn't a left one"
+heapifyDown = \initialQueue ->
+    heapifyDownAt = \q, item, idx ->
+        rightIdx = (idx + 1) * 2
+        leftIdx = rightIdx - 1
+        rightChildRes = List.get q rightIdx
+        leftChildRes = List.get q leftIdx
+        when (leftChildRes, rightChildRes) is
+            (Err _, Ok _) -> crash "Binary heaps are full binary trees. Can't have a righ branch if there isn't a left one"
+            (Ok left, Err _) if left.time < item.time ->
+                newQueue = List.set q idx left
+                heapifyDownAt newQueue item leftIdx
+            (Ok left, Ok right) if left.time < item.time || right.time < item.time ->
+                if left.time <= right.time then
+                    newQueue = List.set q idx left
+                    heapifyDownAt newQueue item leftIdx
+                else
+                    newQueue = List.set q idx right
+                    heapifyDownAt newQueue item rightIdx
 
-                    (Ok left, Err OutOfBounds) if left.time < itemToPrioritize.time ->
-                        newQueue = swap q { item: itemToPrioritize, idx } { item: left, idx: leftIdx }
-                        restorePriorityAt newQueue leftIdx
+            _ -> List.set q idx item
 
-                    (Ok left, Ok right) if left.time < itemToPrioritize.time || right.time < itemToPrioritize.time ->
-                        if left.time <= right.time then
-                            newQueue = swap q { item: itemToPrioritize, idx } { item: left, idx: leftIdx }
-                            restorePriorityAt newQueue leftIdx
-                        else
-                            newQueue = swap q { item: itemToPrioritize, idx } { item: right, idx: rightIdx }
-                            restorePriorityAt newQueue rightIdx
-
-                    _ -> q
-    restorePriorityAt initialQueue 0
-
-expect
-    swap [1, 2, 3, 4] { idx: 0, item: 1 } { idx: 3, item: 4 } == [4, 2, 3, 1]
+    when initialQueue is
+        [] -> initialQueue
+        [head, ..] -> heapifyDownAt initialQueue head 0       
 
 expect
     queue = empty {}
