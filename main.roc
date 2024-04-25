@@ -6,7 +6,7 @@ app "des"
     imports [pf.Stdout, random.Random, PrioQueue, Queue]
     provides [main] to pf
 
-timeAfterGeneratingStops = 50
+timeAfterGeneratingStops = 24
 examinationTime = 5
 interactionTime = 5
 interArrivalTimeMin = 2
@@ -38,9 +38,8 @@ processResults = \{ patientsProcessed: patients, time } ->
 
     patientCount = List.len patients
     avgWaitTime =
-        waitTimes = List.map patients \p -> 
-            dbg T p.processedAt p.arrivedAt
-            p.processedAt - p.arrivedAt
+        waitTimes = List.map patients \p ->
+            p.triageDoneAt - p.arrivedAt
         (List.sum waitTimes |> Num.toFrac) / (Num.toFrac patientCount) |> roundToPrecision 2
 
     report =
@@ -51,8 +50,8 @@ processResults = \{ patientsProcessed: patients, time } ->
         """
     Stdout.line report
 
-# workaround for the lack of Frac to Str formatting
-# todo: delete this comment if there are no other solutions
+# workaround for the lack of Frac to Str formatting with precision
+# todo: delete this comment before release if there isn't a better a solution
 roundToPrecision = \num, decimalCount ->
     tenToThePrecisionth = Num.powInt 10 decimalCount |> Num.toFrac
     num * tenToThePrecisionth |> Num.round |> Num.toFrac |> Num.div tenToThePrecisionth
@@ -131,13 +130,14 @@ handleGeneration = \world, id ->
 
         patient = { id, arrivedAt: time, state }
         worldWithNewRandom = { worldWithGeneration & random: newRandom }
-
         patientArrived worldWithNewRandom patient
 
 patientArrived = \world, patient ->
     { time, patientsWaiting, events } = world
     when tryTriagingPatient world patient is
-        Ok worldWithTriagedPatient -> worldWithTriagedPatient
+        Ok worldWithTriagedPatient ->
+            worldWithTriagedPatient
+
         Err NoAvailableDoctors ->
             newPatients = Queue.enqueue patientsWaiting patient |> Result.withDefault patientsWaiting
             interactionEvent = { time: time + interactionTime, type: Interaction patient.id }
@@ -158,11 +158,11 @@ triagePatient = \world, patient ->
 
 handleTriageDone = \world, patient ->
     { patientsWaiting, patientsProcessed, availableDoctors, time } = world
-
-    patientDetails = { state: patient.state, arrivedAt: patient.arrivedAt, processedAt: time }
+    patientDetails = { state: patient.state, arrivedAt: patient.arrivedAt, triageDoneAt: time }
     newPatientsProcessed = List.append patientsProcessed patientDetails
     worldWithTriageDone = { world & availableDoctors: availableDoctors + 1, patientsProcessed: newPatientsProcessed }
     when Queue.dequeue patientsWaiting is
-        Ok (remainingPatients, patientNextInLine) -> triagePatient { worldWithTriageDone & patientsWaiting: remainingPatients } patientNextInLine
-        Err QueueWasEmpty -> worldWithTriageDone
+        Ok (remainingPatients, patientNextInLine) ->
+            triagePatient { worldWithTriageDone & patientsWaiting: remainingPatients } patientNextInLine
 
+        Err QueueWasEmpty -> worldWithTriageDone

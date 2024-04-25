@@ -21,7 +21,7 @@ prioritizeEnqueuedItem = \initialQueue, enqueuedItem ->
                 Ok parentItem ->
                     if item.time < parentItem.time then
                         newQueue = swap q { item, idx } { item: parentItem, idx: parentIdx }
-                        prioritizeItemAt newQueue parentItem parentIdx
+                        prioritizeItemAt newQueue item parentIdx
                     else
                         q
 
@@ -35,10 +35,7 @@ dequeue = \q ->
     queueAndItemRes =
         firstItem <- List.first q |> Result.try
         lastItem <- List.last q |> Result.map
-        newQueue =
-            swappedQueue = swap q { item: firstItem, idx: 0 } { item: lastItem, idx: List.len q - 1 }
-            unprioritizedNewQueue = List.dropLast swappedQueue 1
-            restorePriority unprioritizedNewQueue
+        newQueue = q |> List.set 0 lastItem |> List.dropLast 1 |> restorePriority
         (newQueue, firstItem)
     queueAndItemRes |> Result.mapErr \_ -> QueueWasEmpty
 
@@ -56,21 +53,27 @@ restorePriority = \initialQueue ->
                         crash "Binary heaps (Full binary trees) can't have a righ branch if there isn't a left one"
 
                     (Ok left, Err OutOfBounds) if left.time < itemToPrioritize.time ->
-                        swap q { item: itemToPrioritize, idx } { item: left, idx: leftIdx }
+                        newQueue = swap q { item: itemToPrioritize, idx } { item: left, idx: leftIdx }
+                        restorePriorityAt newQueue leftIdx
 
                     (Ok left, Ok right) if left.time < itemToPrioritize.time || right.time < itemToPrioritize.time ->
                         if left.time <= right.time then
-                            swap q { item: itemToPrioritize, idx } { item: left, idx: leftIdx }
+                            newQueue = swap q { item: itemToPrioritize, idx } { item: left, idx: leftIdx }
+                            restorePriorityAt newQueue leftIdx
                         else
-                            swap q { item: itemToPrioritize, idx } { item: right, idx: rightIdx }
+                            newQueue = swap q { item: itemToPrioritize, idx } { item: right, idx: rightIdx }
+                            restorePriorityAt newQueue rightIdx
 
                     _ -> q
-
     restorePriorityAt initialQueue 0
+
+expect
+    swap [1, 2, 3, 4] { idx: 0, item: 1 } { idx: 3, item: 4 } == [4, 2, 3, 1]
 
 expect
     queue = empty {}
     dequeue queue == Err QueueWasEmpty
+
 expect
     queue = empty {} |> enqueue { time: 2 } |> enqueue { time: 1 } |> enqueue { time: 3 }
     success =
@@ -78,4 +81,15 @@ expect
         (q2, item2) <- dequeue q1 |> Result.try
         (_, item3) <- dequeue q2 |> Result.map
         (item1, item2, item3) == ({ time: 1 }, { time: 2 }, { time: 3 })
+    Result.withDefault success Bool.false
+
+expect
+    queue = empty {} |> enqueue { time: 2 }
+    success =
+        (q1, item1) <- dequeue queue |> Result.try
+        q2 = q1 |> enqueue { time: 3 } |> enqueue { time: 4 }
+        (q3, item2) <- dequeue q2 |> Result.try
+        q4 = q3 |> enqueue { time: 5 } |> enqueue { time: 6 }
+        (_, item3) <- dequeue q4 |> Result.map
+        (item1, item2, item3) == ({ time: 2 }, { time: 3 }, { time: 4 })
     Result.withDefault success Bool.false
