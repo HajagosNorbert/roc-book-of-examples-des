@@ -6,49 +6,48 @@ app "des"
     imports [pf.Stdout, random.Random, PrioQueue, Queue]
     provides [main] to pf
 
-timeAfterGeneratingStops = 24
-examinationTime = 5
+timeAfterArrivalsStop = 100
+examinationTime = 6
 interactionTime = 5
 interArrivalTimeMin = 2
-interArrivalTimeMax = 2
+interArrivalTimeMax = 3
+
 defaultWorld =
-    firstPatientId = 0
-    time = 0
     seed = 42
     availableDoctors = 2
     waitingRoomCapacity = 50
     {
-        time,
+        time: 0,
         random: Random.seed seed,
         availableDoctors,
         patientsWaiting: Queue.empty waitingRoomCapacity,
-        events: PrioQueue.empty .time |> PrioQueue.enqueue { time: 0, type: Generation firstPatientId },
+        events: PrioQueue.empty .time |> PrioQueue.enqueue { time: 0, type: Generation 0 },
         patientsProcessed: [],
     }
 
 main =
     simulatedWorld = processEvents defaultWorld
-    processResults simulatedWorld
+    report = createReport simulatedWorld
+    Stdout.line report
 
-processResults = \{ patientsProcessed: patients, time } ->
+createReport = \{ patientsProcessed: patients, time } ->
     healthyCount = List.countIf patients \p -> p.state == Healthy
     infectedCount = List.countIf patients \p -> p.state == Infected
     healthyAtArrivalCount = healthyCount + infectedCount
-    infectedRatioPercentage = Num.toFrac infectedCount / Num.toFrac healthyAtArrivalCount |> Num.mul 100 |> roundToPrecision 2
+    infectedRatio = Num.toFrac infectedCount / Num.toFrac healthyAtArrivalCount
+    infectedRatioPercentage = infectedRatio |> Num.mul 100 |> roundToPrecision 2
 
     patientCount = List.len patients
     avgWaitTime =
-        waitTimes = List.map patients \p ->
-            p.triageDoneAt - p.arrivedAt
+        waitTimes = List.map patients \p -> p.triageDoneAt - p.arrivedAt
         (List.sum waitTimes |> Num.toFrac) / (Num.toFrac patientCount) |> roundToPrecision 2
 
-    report =
-        """
-        Processed $(Num.toStr patientCount) patients in $(Num.toStr time) minutes.
-        $(Num.toStr healthyAtArrivalCount) arrived healthy, $(Num.toStr infectedCount) were infected while waiting, which is $(Num.toStr infectedRatioPercentage)% of the healthy arrivals.
-        Patiens had an average wait time of $(Num.toStr avgWaitTime) minutes.
-        """
-    Stdout.line report
+    """
+    Processed $(Num.toStr patientCount) patients in $(Num.toStr time) minutes.
+    $(Num.toStr healthyAtArrivalCount) arrived healthy, $(Num.toStr infectedCount) were infected while waiting.
+    That is $(Num.toStr infectedRatioPercentage)% of the healthy arrivals.
+    Patiens had an average wait time of $(Num.toStr avgWaitTime) minutes.
+    """
 
 # workaround for the lack of Frac to Str formatting with precision
 # todo: delete this comment before release if there isn't a better a solution
@@ -109,7 +108,7 @@ interactPatients = \patients, { interactorIdx, interactor, partnerIdx, partner }
 
 handleGeneration = \world, id ->
     { time, events, random } = world
-    if time > timeAfterGeneratingStops then
+    if time > timeAfterArrivalsStop then
         world
     else
         { state: randomAfterArrivalTime, value: interArrivalTime } =

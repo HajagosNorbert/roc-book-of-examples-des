@@ -2,31 +2,40 @@ interface Queue
     exposes [empty, find, getAt, setAt, len, enqueue, dequeue]
     imports []
 
-empty = \capacity -> {
-    data: List.withCapacity capacity,
-    front: 0,
-    back: 0,
-    len: 0,
-    capacity,
+Queue a := {
+    data : List a,
+    front : U64,
+    back : U64,
+    len : U64,
+    capacity : U64,
 }
+    implements [Eq]
 
-find = \q, condition ->
+empty = \capacity -> @Queue {
+        data: List.withCapacity capacity,
+        front: 0,
+        back: 0,
+        len: 0,
+        capacity,
+    }
+
+find = \@Queue q, condition ->
     List.walkWithIndexUntil q.data (Err NotFound) \state, elem, idx ->
         if condition elem then
             Break (Ok (idx, elem))
         else
             Continue state
 
-getAt = \q, index ->
+getAt = \@Queue q, index ->
     List.get q.data index
 
-setAt = \q, index, value ->
+setAt = \@Queue q, index, value ->
     data = List.set q.data index value
-    { q & data }
+    @Queue { q & data }
 
-len = .len
+len = \@Queue q -> q.len
 
-enqueue = \q, element ->
+enqueue = \@Queue q, element ->
     if q.len == q.capacity then
         Err QueueWasFull
     else
@@ -35,9 +44,9 @@ enqueue = \q, element ->
                 List.append q.data element
             else
                 List.set q.data q.back element
-        Ok { q & data: newData, len: q.len + 1, back: (q.back + 1) % q.capacity }
+        Ok (@Queue { q & data: newData, len: q.len + 1, back: (q.back + 1) % q.capacity })
 
-dequeue = \q ->
+dequeue = \@Queue q ->
     if q.len == 0 then
         Err QueueWasEmpty
     else
@@ -46,7 +55,7 @@ dequeue = \q ->
             when List.get q.data q.front is
                 Err OutOfBounds -> crash "front of queue was pointing outside of the queue"
                 Ok elem -> elem
-        Ok (newQueue, element)
+        Ok (@Queue newQueue, element)
 
 expect
     queue = empty 1 |> enqueue A |> Result.try \q -> q |> enqueue B
@@ -59,12 +68,12 @@ expect
 expect
     capacity = 1
     queue = empty capacity |> enqueue A
-    queue == Ok { data: [A], front: 0, back: 0, len: 1, capacity: capacity }
+    queue == Ok (@Queue { data: [A], front: 0, back: 0, len: 1, capacity: capacity })
 
 expect
     capacity = 1
     dequeued = empty capacity |> enqueue A |> Result.try \q -> q |> dequeue
-    dequeued == Ok ({ data: [A], front: 0, back: 0, len: 0, capacity: capacity }, A)
+    dequeued == Ok ((@Queue { data: [A], front: 0, back: 0, len: 0, capacity: capacity }, A))
 
 expect
     capacity = 1
@@ -72,4 +81,5 @@ expect
         q <- empty capacity |> enqueue A |> Result.try
         (deq, _) <- q |> dequeue |> Result.try
         deq |> enqueue B
-    queue == Ok { data: [B], front: 0, back: 0, len: 1, capacity: capacity }
+    queue == Ok (@Queue { data: [B], front: 0, back: 0, len: 1, capacity: capacity })
+
