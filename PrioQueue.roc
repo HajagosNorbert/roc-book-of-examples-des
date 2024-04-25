@@ -12,9 +12,9 @@ empty = \priority -> @PrioQueue { data: [], priority }
 enqueue = \@PrioQueue { data: q, priority }, item ->
     enqueuedItemIdx = List.len q
     newQueue = List.append q item
-    @PrioQueue { data: heapifyUpAt newQueue item enqueuedItemIdx, priority }
+    @PrioQueue { data: heapifyUpAt {data: newQueue, priority} item enqueuedItemIdx, priority }
 
-heapifyUpAt = \q, item, idx ->
+heapifyUpAt = \{ data: q, priority}, item, idx ->
     if idx == 0 then
         List.set q idx item
     else
