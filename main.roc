@@ -22,7 +22,7 @@ defaultWorld =
         random: Random.seed seed,
         availableDoctors,
         patientsWaiting: Queue.empty waitingRoomCapacity,
-        events: PrioQueue.empty {} |> PrioQueue.enqueue { time: 0, type: Generation firstPatientId },
+        events: PrioQueue.empty .time |> PrioQueue.enqueue { time: 0, type: Generation firstPatientId },
         patientsProcessed: [],
     }
 
